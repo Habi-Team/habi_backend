@@ -4,3 +4,4 @@
 // Representación conceptual del resumen, sin entidad ORM.
 // Relacionar transacción, inmueble, etapa, avance, pendientes y próximo evento.
 // No crea tablas ni persistencia.
+// MODIFICACIÓN :D
