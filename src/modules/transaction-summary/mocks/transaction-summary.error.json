@@ -1,0 +1,8 @@
+{
+  "simulation": true,
+  "data": null,
+  "error": {
+    "code": "SUMMARY_UNAVAILABLE",
+    "message": "No fue posible consultar el resumen."
+  }
+}
