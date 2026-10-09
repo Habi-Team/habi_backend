@@ -7,4 +7,4 @@
 // mainPendingItems [{ id, description, detailPath }];
 // nextEvent { description, scheduledAt, detailPath } o null; detailPath.
 // Las etiquetas permiten interpretar el estado sin depender de colores.
-// Agregar campo faltante al contrato con el front
+// Agregar campo faltante al contrato con el front --- campo permite null
