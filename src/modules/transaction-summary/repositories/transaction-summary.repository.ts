@@ -4,3 +4,4 @@
 // Repositorio previsto para obtener el resumen de la transacción.
 // En una implementación futura, limitar consulta al cliente autorizado.
 // Sin conexión a base de datos ni lectura de archivos.
+// Agregar campo faltante

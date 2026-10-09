@@ -5,3 +5,4 @@
 // Relacionar transacción, inmueble, etapa, avance, pendientes y próximo evento.
 // No crea tablas ni persistencia.
 // MODIFICACIÓN :D
+// Agregar campo faltante de la entidad

@@ -7,3 +7,5 @@
 // Recuperar el avance de una fuente consistente con etapas e hitos.
 // La fórmula definitiva queda pendiente; no se asume ponderación igual.
 // Sin consulta real, cálculo ni integración.
+// Agregar campo faltante
+
