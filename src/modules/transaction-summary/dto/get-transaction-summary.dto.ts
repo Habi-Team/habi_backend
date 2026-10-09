@@ -5,3 +5,4 @@
 // transactionId: string, identificador de la transacción.
 // Validaciones previstas: obligatorio, formato válido y acceso autorizado.
 // No contiene validaciones ejecutables.
+// Agregar equivalente en el dto del campo que faltaba -- campo permite null
