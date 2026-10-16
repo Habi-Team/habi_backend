@@ -4,3 +4,5 @@
 // Módulo previsto: TransactionSummaryModule.
 // Agrupar controlador, servicio y repositorio del resumen.
 // No se registra en AppModule en esta simulación.
+// Agregar campo faltante
+

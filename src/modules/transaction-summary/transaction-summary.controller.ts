@@ -6,3 +6,5 @@
 // Recibir identificador y contexto del cliente; delegar consulta al servicio.
 // No hay decoradores, rutas activas ni métodos implementados.
 // Otro cambio
+// Agregar campo faltante
+
