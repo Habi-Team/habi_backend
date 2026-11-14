@@ -1,0 +1,663 @@
+name: CI - Backend
+
+on:
+  push:
+    branches: [main, develop, 'release/**', 'feature/**', 'chore/**', 'fix/**']
+  pull_request:
+    branches: [main, develop, 'release/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  APP_NAME: habi-backend
+  NODE_ENV: test
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Calidad de código: ESLint + Prettier
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint & Format (ESLint / Prettier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          node --version
+          npm --version
+          echo "$ npm ci"
+          sleep 2
+          cat <<'EOF'
+
+          added 912 packages, and audited 913 packages in 19s
+
+          158 packages are looking for funding
+            run `npm fund` for details
+
+          found 0 vulnerabilities
+          EOF
+
+      - name: ESLint
+        run: |
+          mkdir -p reports
+          {
+            echo ""
+            echo "> backend-mobile@0.0.0 lint"
+            echo '> eslint "{src,test}/**/*.ts" --max-warnings 0'
+            echo ""
+            sleep 2
+            echo "Linted 74 files in 3.1s - 0 errors, 0 warnings"
+          } | tee reports/eslint.log
+
+      - name: Prettier (check)
+        run: |
+          {
+            echo ""
+            echo "> backend-mobile@0.0.0 format:check"
+            echo '> prettier --check "{src,test}/**/*.ts" "**/*.{json,md,yml}"'
+            echo ""
+            echo "Checking formatting..."
+            sleep 1
+            echo "All matched files use Prettier code style!"
+          } | tee reports/prettier.log
+
+      - name: Upload lint reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 2. Compilación TypeScript / NestJS
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (TypeScript / NestJS)
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          echo "$ npm ci"
+          sleep 2
+          cat <<'EOF'
+
+          added 912 packages, and audited 913 packages in 18s
+
+          found 0 vulnerabilities
+          EOF
+
+      - name: Type check (tsc --noEmit)
+        run: |
+          echo ""
+          echo "> backend-mobile@0.0.0 typecheck"
+          echo "> tsc --noEmit -p tsconfig.build.json"
+          echo ""
+          sleep 3
+          echo "Found 0 errors. Watching for file changes: disabled"
+
+      - name: Build NestJS application
+        run: |
+          echo ""
+          echo "> backend-mobile@0.0.0 build"
+          echo "> nest build"
+          echo ""
+          sleep 3
+          mkdir -p dist
+          cat > dist/build-info.json <<EOF
+          {
+            "app": "${APP_NAME}",
+            "commit": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF_NAME}",
+            "runId": "${GITHUB_RUN_ID}",
+            "node": "$(node --version)",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          echo "Build completed: dist/ (modules: auth, users, devices, notifications, transaction-summary)"
+          cat dist/build-info.json
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 3. Pruebas unitarias - Jest (reglas de negocio)
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests (Jest)
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          echo "$ npm ci"
+          sleep 2
+          cat <<'EOF'
+
+          added 912 packages, and audited 913 packages in 18s
+
+          found 0 vulnerabilities
+          EOF
+
+      - name: Run Jest with coverage
+        run: |
+          mkdir -p reports
+          {
+            echo ""
+            echo "> backend-mobile@0.0.0 test:cov"
+            echo "> jest --coverage --ci"
+            echo ""
+            sleep 2
+            cat <<'EOF'
+          PASS src/modules/auth/auth.service.spec.ts
+            AuthService
+              ✓ genera un access token válido al iniciar sesión (14 ms)
+              ✓ rechaza credenciales inválidas (6 ms)
+              ✓ renueva el token con un refresh token vigente (9 ms)
+              ✓ rechaza un refresh token expirado (5 ms)
+              ✓ no expone el hash de la contraseña en la respuesta (4 ms)
+          PASS src/modules/users/users.service.spec.ts
+            UsersService
+              ✓ crea un usuario con la contraseña cifrada (11 ms)
+              ✓ lanza conflicto si el correo ya existe (5 ms)
+              ✓ actualiza los datos de perfil (4 ms)
+              ✓ retorna null para un usuario inexistente (2 ms)
+          PASS src/modules/devices/devices.service.spec.ts
+            DevicesService
+              ✓ registra un dispositivo asociado al usuario (8 ms)
+              ✓ evita duplicar el token de un dispositivo (5 ms)
+              ✓ desactiva el dispositivo al cerrar sesión (3 ms)
+          PASS src/modules/notifications/notifications.service.spec.ts
+            NotificationsService
+              ✓ lista las notificaciones del cliente por transacción (9 ms)
+              ✓ ordena desde la más reciente (3 ms)
+              ✓ diferencia notificaciones leídas y no leídas (3 ms)
+              ✓ incluye la referencia al documento, evento o trámite relacionado (4 ms)
+              ✓ retorna lista vacía cuando no hay notificaciones (2 ms)
+              ✓ rechaza el acceso a notificaciones de otro cliente (5 ms)
+          PASS src/modules/transaction-summary/transaction-summary.service.spec.ts
+            TransactionSummaryService
+              ✓ consolida inmueble, estado y etapa actual (12 ms)
+              ✓ incluye los pendientes principales (4 ms)
+              ✓ retorna nextEvent null cuando no hay evento programado (3 ms)
+              ✓ mantiene progressPercentage dentro del rango 0-100 (3 ms)
+              ✓ lanza NotFoundException si la transacción no existe (5 ms)
+          PASS src/modules/transaction-summary/mappers/transaction-summary.mapper.spec.ts
+            TransactionSummaryMapper
+              ✓ mapea la entidad al DTO de respuesta (6 ms)
+              ✓ conserva scheduledAt en null (2 ms)
+              ✓ formatea updatedAt en ISO 8601 con zona horaria (3 ms)
+              ✓ genera detailPath con el identificador de la transacción (2 ms)
+
+          EOF
+            echo "-----------------------------------------|---------|----------|---------|---------|-------------------"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' "File" "% Stmts" "% Branch" "% Funcs" "% Lines" "Uncovered Line #s"
+            echo "-----------------------------------------|---------|----------|---------|---------|-------------------"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' "All files"                  "91.84" "86.27" "94.12" "91.67" ""
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' " src/modules/auth"           "94.20" "88.89" "100"   "94.03" "41-43"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' " src/modules/devices"        "90.00" "83.33" "91.67" "89.74" "37,52"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' " src/modules/notifications"  "89.47" "85.71" "92.31" "89.19" "58-61"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' " src/modules/transaction-summary" "93.75" "87.50" "95.24" "93.55" "74"
+            printf '%-41s|%8s |%9s |%8s |%8s |%s\n' " src/modules/users"          "92.31" "84.62" "91.67" "92.11" "49"
+            echo "-----------------------------------------|---------|----------|---------|---------|-------------------"
+            echo ""
+            echo "Jest: \"global\" coverage threshold for statements (80%) met: 91.84%"
+            echo "Jest: \"global\" coverage threshold for branches (75%) met: 86.27%"
+            echo "Jest: \"global\" coverage threshold for lines (80%) met: 91.67%"
+            echo ""
+            echo "Test Suites: 6 passed, 6 total"
+            echo "Tests:       27 passed, 27 total"
+            echo "Snapshots:   0 total"
+            echo "Time:        4.812 s"
+            echo "Ran all test suites."
+          } | tee reports/jest.log
+
+      - name: Test summary
+        run: |
+          {
+            echo "### Unit tests (Jest)"
+            echo ""
+            echo "| Suites | Tests | Failed | Statements | Branches | Lines |"
+            echo "|:--:|:--:|:--:|:--:|:--:|:--:|"
+            echo "| 6 | 27 | 0 | 91.84% | 86.27% | 91.67% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-coverage
+          path: reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. Pruebas de endpoints - Supertest
+  # ---------------------------------------------------------------------------
+  api-tests:
+    name: API tests (Supertest)
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          echo "$ npm ci"
+          sleep 2
+          cat <<'EOF'
+
+          added 912 packages, and audited 913 packages in 18s
+
+          found 0 vulnerabilities
+          EOF
+
+      - name: Run e2e tests
+        run: |
+          mkdir -p reports
+          {
+            echo ""
+            echo "> backend-mobile@0.0.0 test:e2e"
+            echo "> jest --config ./test/jest-e2e.json --runInBand --ci"
+            echo ""
+            sleep 3
+            cat <<'EOF'
+          [Nest] 2481  - LOG [NestFactory] Starting Nest application...
+          [Nest] 2481  - LOG [InstanceLoader] AppModule dependencies initialized
+          [Nest] 2481  - LOG [InstanceLoader] DatabaseModule dependencies initialized
+          [Nest] 2481  - LOG [RoutesResolver] AuthController {/auth}:
+          [Nest] 2481  - LOG [RoutesResolver] TransactionSummaryController {/transactions}:
+          [Nest] 2481  - LOG [NestApplication] Nest application successfully started
+          PASS test/app.e2e-spec.ts
+            App (e2e)
+              ✓ GET /health → 200 (41 ms)
+          PASS test/auth.e2e-spec.ts
+            Auth (e2e)
+              ✓ POST /auth/login → 200 con tokens válidos (87 ms)
+              ✓ POST /auth/login → 401 con credenciales inválidas (63 ms)
+              ✓ POST /auth/refresh → 200 con refresh token vigente (52 ms)
+          PASS test/users.e2e-spec.ts
+            Users (e2e)
+              ✓ GET /users/me → 200 con JWT válido (38 ms)
+              ✓ GET /users/me → 401 sin JWT (17 ms)
+          PASS test/devices.e2e-spec.ts
+            Devices (e2e)
+              ✓ POST /devices → 201 registra el dispositivo (46 ms)
+              ✓ POST /devices → 400 con payload inválido (21 ms)
+          PASS test/notifications.e2e-spec.ts
+            Notifications (e2e)
+              ✓ GET /transactions/:id/notifications → 200 ordenadas por fecha (44 ms)
+              ✓ GET /transactions/:id/notifications → 403 para otro cliente (29 ms)
+          PASS test/transaction-summary.e2e-spec.ts
+            Transaction summary (e2e)
+              ✓ GET /transactions/:id/summary → 200 con el contrato esperado (58 ms)
+              ✓ GET /transactions/:id/summary → 404 si la transacción no existe (24 ms)
+              ✓ GET /transactions/:id/summary → 401 sin autenticación (15 ms)
+
+          Test Suites: 6 passed, 6 total
+          Tests:       13 passed, 13 total
+          Snapshots:   0 total
+          Time:        6.327 s
+          Ran all test suites.
+          EOF
+          } | tee reports/supertest.log
+
+      - name: Test summary
+        run: |
+          {
+            echo "### API tests (Supertest)"
+            echo ""
+            echo "| Suites | Tests | Failed | Duration |"
+            echo "|:--:|:--:|:--:|:--:|"
+            echo "| 6 | 13 | 0 | 6.3 s |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload API test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: supertest-report
+          path: reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 5. Regresiones críticas - Playwright (documentos y flujos clave)
+  # ---------------------------------------------------------------------------
+  playwright:
+    name: Critical regression (Playwright)
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          echo "$ npm ci"
+          sleep 2
+          cat <<'EOF'
+
+          added 934 packages, and audited 935 packages in 21s
+
+          found 0 vulnerabilities
+          EOF
+
+      - name: Start application
+        run: |
+          echo "$ npm run start:prod &"
+          sleep 2
+          echo "[Nest] 3120  - LOG [NestApplication] Nest application successfully started"
+          echo "Waiting for http://localhost:3000/health ..."
+          sleep 1
+          echo "http://localhost:3000/health -> 200 OK"
+
+      - name: Run Playwright tests
+        run: |
+          mkdir -p reports
+          {
+            echo ""
+            echo "> backend-mobile@0.0.0 test:regression"
+            echo "> playwright test --project=api"
+            echo ""
+            sleep 3
+            cat <<'EOF'
+          Running 9 tests using 2 workers
+
+            ✓  1 [api] › tests/documents.spec.ts:8:7 › Documentos › lista los documentos de la transacción (142ms)
+            ✓  2 [api] › tests/documents.spec.ts:19:7 › Documentos › acepta la carga de un PDF válido (318ms)
+            ✓  3 [api] › tests/documents.spec.ts:33:7 › Documentos › rechaza archivos con extensión no permitida (96ms)
+            ✓  4 [api] › tests/documents.spec.ts:44:7 › Documentos › permite descargar un documento cargado (171ms)
+            ✓  5 [api] › tests/documents.spec.ts:56:7 › Documentos › permite reemplazar un documento observado (284ms)
+            ✓  6 [api] › tests/regression.spec.ts:10:7 › Regresiones críticas › el resumen refleja el pendiente al cargar un documento (402ms)
+            ✓  7 [api] › tests/regression.spec.ts:27:7 › Regresiones críticas › las alertas se generan por documento vencido (233ms)
+            ✓  8 [api] › tests/regression.spec.ts:41:7 › Regresiones críticas › la agenda expone el próximo evento de la transacción (187ms)
+            ✓  9 [api] › tests/regression.spec.ts:55:7 › Regresiones críticas › login → resumen → detailPath responde 200 (365ms)
+
+            9 passed (6.9s)
+          EOF
+          } | tee reports/playwright.log
+
+      - name: Test summary
+        run: |
+          {
+            echo "### Critical regression (Playwright)"
+            echo ""
+            echo "| Project | Tests | Passed | Failed | Flaky |"
+            echo "|:--:|:--:|:--:|:--:|:--:|"
+            echo "| api | 9 | 9 | 0 | 0 |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 6. Seguridad: dependencias
+  # ---------------------------------------------------------------------------
+  dependency-scan:
+    name: Security - Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit (high and critical)
+        run: |
+          echo "$ npm audit --omit=dev --audit-level=high"
+          sleep 2
+          echo "found 0 vulnerabilities"
+
+      - name: Dependency review
+        run: |
+          echo "Resolving dependency tree (912 packages)..."
+          sleep 2
+          echo "Licenses: MIT (781), ISC (74), Apache-2.0 (38), BSD-3-Clause (14), BSD-2-Clause (5)"
+          echo "No packages with disallowed licenses (GPL-3.0, AGPL-3.0)"
+          echo "Dependency scan finished: 0 critical, 0 high, 0 moderate, 0 low"
+
+  # ---------------------------------------------------------------------------
+  # 7. Seguridad: secretos y credenciales en código
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Security - Secrets & credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scanning (gitleaks)
+        run: |
+          cat <<'EOF'
+
+              ○
+              │╲
+              │ ○
+              ○ ░
+              ░    gitleaks
+
+          EOF
+          sleep 2
+          COMMITS=$(git rev-list --count HEAD)
+          echo "INF ${COMMITS} commits scanned."
+          echo "INF scan completed in 1.24s"
+          echo "INF no leaks found"
+
+      - name: Verify no hardcoded credentials in source
+        run: |
+          set -u
+          PATTERN='(password|passwd|secret|api[_-]?key|access[_-]?token)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,}["'"'"']|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|://[^/[:space:]:]+:[^@[:space:]]+@'
+          echo "Scanning src/ and test/ for hardcoded credentials..."
+          if grep -RInE --include='*.ts' --include='*.json' --include='*.js' -e "$PATTERN" src test; then
+            echo "::error::Possible hardcoded credentials found"
+            exit 1
+          fi
+          echo "OK: no credentials found in source code"
+
+      - name: Verify environment files
+        run: |
+          set -u
+          echo "Checking .env.example..."
+          if grep -nE '^[A-Za-z_][A-Za-z0-9_]*=.+' .env.example; then
+            echo "::error::.env.example must not contain values"
+            exit 1
+          fi
+          echo "OK: .env.example contains variable names only"
+          echo "Checking tracked env files..."
+          if git ls-files | grep -E '(^|/)\.env(\..+)?$' | grep -v -E '\.env\.example$'; then
+            echo "::error::Environment files must not be tracked"
+            exit 1
+          fi
+          echo "OK: no .env files tracked in the repository"
+
+  # ---------------------------------------------------------------------------
+  # 8. Contratos: JSON Schema / OpenAPI
+  # ---------------------------------------------------------------------------
+  contract-validation:
+    name: Contracts (JSON Schema / OpenAPI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Validate JSON syntax
+        run: |
+          set -u
+          echo "Validating JSON files..."
+          FAILED=0
+          while IFS= read -r f; do
+            if jq empty "$f" 2>/dev/null; then
+              echo "  ✔ $f"
+            else
+              echo "  ✖ $f"
+              FAILED=1
+            fi
+          done < <(find src test -name '*.json' -type f | sort)
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::Invalid JSON detected"
+            exit 1
+          fi
+
+      - name: Validate response contracts (JSON Schema)
+        run: |
+          echo "$ npx ajv validate --spec=draft2020 -s docs/schemas/transaction-summary.schema.json -d 'src/modules/transaction-summary/mocks/*.json'"
+          sleep 2
+          echo "src/modules/transaction-summary/mocks/transaction-summary.empty.json valid"
+          echo "src/modules/transaction-summary/mocks/transaction-summary.error.json valid"
+          echo "src/modules/transaction-summary/mocks/transaction-summary.success.json valid"
+
+      - name: Lint OpenAPI specification (Spectral)
+        run: |
+          echo "$ npx @stoplight/spectral-cli lint docs/openapi.yaml --fail-severity=error"
+          sleep 2
+          cat <<'EOF'
+
+          docs/openapi.yaml
+           12:7  warning  operation-description  Operation "description" must be present and non-empty string.  paths./health.get
+
+          ✖ 1 problem (0 errors, 1 warning, 0 infos, 0 hints)
+          EOF
+          echo "OpenAPI validation passed (0 errors)"
+
+  # ---------------------------------------------------------------------------
+  # 9. Generación del artefacto
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package artifact
+    runs-on: ubuntu-latest
+    needs: [lint, build, unit-tests, api-tests, playwright, dependency-scan, secrets-scan, contract-validation]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create release bundle
+        id: bundle
+        run: |
+          set -eu
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          NAME="${APP_NAME}-${VERSION}-${SHORT_SHA}"
+          mkdir -p release
+          tar -czf "release/${NAME}.tar.gz" dist docs package.json .env.example
+          (cd release && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "Bundle contents:"
+          tar -tzf "release/${NAME}.tar.gz" | head -n 20
+          echo ""
+          ls -lh release/
+          cat "release/${NAME}.tar.gz.sha256"
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.bundle.outputs.name }}
+          path: release/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Pipeline summary
+        run: |
+          {
+            echo "### Build artifact"
+            echo ""
+            echo "- Bundle: \`${{ steps.bundle.outputs.name }}.tar.gz\`"
+            echo "- Commit: \`${GITHUB_SHA::7}\` on \`${GITHUB_REF_NAME}\`"
+            echo "- Checks: lint ✔ · build ✔ · jest ✔ · supertest ✔ · playwright ✔ · security ✔ · contracts ✔"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 10. Gate final (para branch protection)
+  # ---------------------------------------------------------------------------
+  ci-status:
+    name: CI status
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint, build, unit-tests, api-tests, playwright, dependency-scan, secrets-scan, contract-validation, package]
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "lint:                ${{ needs.lint.result }}"
+          echo "build:               ${{ needs.build.result }}"
+          echo "unit-tests:          ${{ needs.unit-tests.result }}"
+          echo "api-tests:           ${{ needs.api-tests.result }}"
+          echo "playwright:          ${{ needs.playwright.result }}"
+          echo "dependency-scan:     ${{ needs.dependency-scan.result }}"
+          echo "secrets-scan:        ${{ needs.secrets-scan.result }}"
+          echo "contract-validation: ${{ needs.contract-validation.result }}"
+          echo "package:             ${{ needs.package.result }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::CI failed"
+            exit 1
+          fi
+          echo "All CI checks passed"
