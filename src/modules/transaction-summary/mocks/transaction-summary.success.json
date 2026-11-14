@@ -1,0 +1,33 @@
+{
+  "simulation": true,
+  "data": {
+    "transactionId": "TX-DEMO-001",
+    "property": {
+      "id": "INM-DEMO-001",
+      "description": "Apartamento de ejemplo"
+    },
+    "status": {
+      "code": "IN_PROGRESS",
+      "label": "En proceso"
+    },
+    "currentStage": {
+      "code": "DOCUMENT_REVIEW",
+      "label": "Revisión documental"
+    },
+    "progressPercentage": 40,
+    "updatedAt": "2026-10-07T15:00:00-05:00",
+    "mainPendingItems": [
+      {
+        "id": "PEND-DEMO-001",
+        "description": "Entregar certificado solicitado",
+        "detailPath": "/transactions/TX-DEMO-001/documents"
+      }
+    ],
+    "nextEvent": {
+      "description": "Revisión de documentos entregados",
+      "scheduledAt": null,
+      "detailPath": "/transactions/TX-DEMO-001/timeline"
+    },
+    "detailPath": "/transactions/TX-DEMO-001"
+  }
+}
